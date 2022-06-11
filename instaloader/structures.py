@@ -177,12 +177,10 @@ class Post:
             return None
 
     def __repr__(self):
-        return '<Post {}>'.format(self.shortcode)
+        return f'<Post {self.shortcode}>'
 
     def __eq__(self, o: object) -> bool:
-        if isinstance(o, Post):
-            return self.shortcode == o.shortcode
-        return NotImplemented
+        return self.shortcode == o.shortcode if isinstance(o, Post) else NotImplemented
 
     def __hash__(self) -> int:
         return hash(self.shortcode)
@@ -213,7 +211,10 @@ class Post:
         if not self._context.is_logged_in:
             raise LoginRequiredException("--login required to access iPhone media info endpoint.")
         if not self._iphone_struct_:
-            data = self._context.get_iphone_json(path='api/v1/media/{}/info/'.format(self.mediaid), params={})
+            data = self._context.get_iphone_json(
+                path=f'api/v1/media/{self.mediaid}/info/', params={}
+            )
+
             self._iphone_struct_ = data['items'][0]
         return self._iphone_struct_
 
@@ -290,10 +291,12 @@ class Post:
         if self.typename == "GraphImage" and self._context.iphone_support and self._context.is_logged_in:
             try:
                 orig_url = self._iphone_struct['image_versions2']['candidates'][0]['url']
-                url = re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
-                return url
+                return re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
             except (InstaloaderException, KeyError, IndexError) as err:
-                self._context.error('{} Unable to fetch high quality image version of {}.'.format(err, self))
+                self._context.error(
+                    f'{err} Unable to fetch high quality image version of {self}.'
+                )
+
         return self._node["display_url"] if "display_url" in self._node else self._node["display_src"]
 
     @property
@@ -337,39 +340,39 @@ class Post:
         .. versionchanged:: 4.6
            Added parameters *start* and *end* to specify a slice of sidecar media.
         """
-        if self.typename == 'GraphSidecar':
-            edges = self._field('edge_sidecar_to_children', 'edges')
-            if end < 0:
-                end = len(edges)-1
-            if start < 0:
-                start = len(edges)-1
-            if any(edge['node']['is_video'] and 'video_url' not in edge['node'] for edge in edges[start:(end+1)]):
-                # video_url is only present in full metadata, issue #558.
-                edges = self._full_metadata['edge_sidecar_to_children']['edges']
-            for idx, edge in enumerate(edges):
-                if start <= idx <= end:
-                    node = edge['node']
-                    is_video = node['is_video']
-                    display_url = node['display_url']
-                    if not is_video and self._context.iphone_support and self._context.is_logged_in:
-                        try:
-                            carousel_media = self._iphone_struct['carousel_media']
-                            orig_url = carousel_media[idx]['image_versions2']['candidates'][0]['url']
-                            display_url = re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
-                        except (InstaloaderException, KeyError, IndexError) as err:
-                            self._context.error('{} Unable to fetch high quality image version of {}.'.format(
-                                err, self))
-                    yield PostSidecarNode(is_video=is_video, display_url=display_url,
-                                          video_url=node['video_url'] if is_video else None)
+        if self.typename != 'GraphSidecar':
+            return
+        edges = self._field('edge_sidecar_to_children', 'edges')
+        if end < 0:
+            end = len(edges)-1
+        if start < 0:
+            start = len(edges)-1
+        if any(edge['node']['is_video'] and 'video_url' not in edge['node'] for edge in edges[start:(end+1)]):
+            # video_url is only present in full metadata, issue #558.
+            edges = self._full_metadata['edge_sidecar_to_children']['edges']
+        for idx, edge in enumerate(edges):
+            if start <= idx <= end:
+                node = edge['node']
+                is_video = node['is_video']
+                display_url = node['display_url']
+                if not is_video and self._context.iphone_support and self._context.is_logged_in:
+                    try:
+                        carousel_media = self._iphone_struct['carousel_media']
+                        orig_url = carousel_media[idx]['image_versions2']['candidates'][0]['url']
+                        display_url = re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
+                    except (InstaloaderException, KeyError, IndexError) as err:
+                        self._context.error(
+                            f'{err} Unable to fetch high quality image version of {self}.'
+                        )
+
+                yield PostSidecarNode(is_video=is_video, display_url=display_url,
+                                      video_url=node['video_url'] if is_video else None)
 
     @property
     def caption(self) -> Optional[str]:
         """Caption."""
         def _normalize(string: Optional[str]) -> Optional[str]:
-            if string is not None:
-                return normalize("NFC", string)
-            else:
-                return None
+            return normalize("NFC", string) if string is not None else None
 
         if "edge_media_to_caption" in self._node and self._node["edge_media_to_caption"]["edges"]:
             return _normalize(self._node["edge_media_to_caption"]["edges"][0]["node"]["text"])
@@ -406,7 +409,7 @@ class Post:
         .. versionadded:: 4.2.6"""
         def _elliptify(caption):
             pcaption = ' '.join([s.replace('/', '\u2215') for s in caption.splitlines() if s]).strip()
-            return (pcaption[:30] + u"\u2026") if len(pcaption) > 31 else pcaption
+            return f"{pcaption[:30]}…" if len(pcaption) > 31 else pcaption
         return _elliptify(self.caption) if self.caption else ''
 
     @property
@@ -436,55 +439,51 @@ class Post:
     @property
     def video_url(self) -> Optional[str]:
         """URL of the video, or None."""
-        if self.is_video:
-            version_urls = []
+        if not self.is_video:
+            return None
+        version_urls = []
+        try:
+            version_urls.append(self._field('video_url'))
+        except (InstaloaderException, KeyError, IndexError) as err:
+            self._context.error(f"Warning: Unable to fetch video from graphql of {self}: {err}")
+        if self._context.iphone_support and self._context.is_logged_in:
             try:
-                version_urls.append(self._field('video_url'))
+                version_urls.extend(version['url'] for version in self._iphone_struct['video_versions'])
             except (InstaloaderException, KeyError, IndexError) as err:
-                self._context.error(f"Warning: Unable to fetch video from graphql of {self}: {err}")
-            if self._context.iphone_support and self._context.is_logged_in:
-                try:
-                    version_urls.extend(version['url'] for version in self._iphone_struct['video_versions'])
-                except (InstaloaderException, KeyError, IndexError) as err:
-                    self._context.error(f"Unable to fetch high-quality video version of {self}: {err}")
-            version_urls = list(dict.fromkeys(version_urls))
-            if len(version_urls) == 0:
-                return None
-            if len(version_urls) == 1:
-                return version_urls[0]
-            url_candidates: List[Tuple[int, str]] = []
-            for idx, version_url in enumerate(version_urls):
-                try:
-                    url_candidates.append((
-                        int(self._context.head(version_url, allow_redirects=True).headers.get('Content-Length', 0)),
-                        version_url
-                    ))
-                except (InstaloaderException, KeyError, IndexError) as err:
-                    self._context.error(f"Video URL candidate {idx+1}/{len(version_urls)} for {self}: {err}")
-            if not url_candidates:
-                # All candidates fail: Fallback to default URL and handle errors later at the actual download attempt
-                return version_urls[0]
-            url_candidates.sort()
-            return url_candidates[-1][1]
-        return None
+                self._context.error(f"Unable to fetch high-quality video version of {self}: {err}")
+        version_urls = list(dict.fromkeys(version_urls))
+        if not version_urls:
+            return None
+        if len(version_urls) == 1:
+            return version_urls[0]
+        url_candidates: List[Tuple[int, str]] = []
+        for idx, version_url in enumerate(version_urls):
+            try:
+                url_candidates.append((
+                    int(self._context.head(version_url, allow_redirects=True).headers.get('Content-Length', 0)),
+                    version_url
+                ))
+            except (InstaloaderException, KeyError, IndexError) as err:
+                self._context.error(f"Video URL candidate {idx+1}/{len(version_urls)} for {self}: {err}")
+        if not url_candidates:
+            # All candidates fail: Fallback to default URL and handle errors later at the actual download attempt
+            return version_urls[0]
+        url_candidates.sort()
+        return url_candidates[-1][1]
 
     @property
     def video_view_count(self) -> Optional[int]:
         """View count of the video, or None.
 
         .. versionadded:: 4.2.6"""
-        if self.is_video:
-            return self._field('video_view_count')
-        return None
+        return self._field('video_view_count') if self.is_video else None
 
     @property
     def video_duration(self) -> Optional[float]:
         """Duration of the video in seconds, or None.
 
         .. versionadded:: 4.2.6"""
-        if self.is_video:
-            return self._field('video_duration')
-        return None
+        return self._field('video_duration') if self.is_video else None
 
     @property
     def viewer_has_liked(self) -> Optional[bool]:
@@ -619,9 +618,14 @@ class Post:
 
         .. versionadded:: 4.4
         """
-        return ([] if not self.is_sponsored else
-                [Profile(self._context, edge['node']['sponsor']) for edge in
-                 self._field('edge_media_to_sponsor_user', 'edges')])
+        return (
+            [
+                Profile(self._context, edge['node']['sponsor'])
+                for edge in self._field('edge_media_to_sponsor_user', 'edges')
+            ]
+            if self.is_sponsored
+            else []
+        )
 
     @property
     def location(self) -> Optional[PostLocation]:
@@ -709,15 +713,18 @@ class Profile:
         """
         if profile_id in context.profile_id_cache:
             return context.profile_id_cache[profile_id]
-        data = context.graphql_query('7c16654f22c819fb63d1183034a5162f',
-                                     {'user_id': str(profile_id),
-                                      'include_chaining': False,
-                                      'include_reel': True,
-                                      'include_suggested_users': False,
-                                      'include_logged_out_extras': False,
-                                      'include_highlight_reels': False},
-                                     rhx_gis=context.root_rhx_gis)['data']['user']
-        if data:
+        if data := context.graphql_query(
+            '7c16654f22c819fb63d1183034a5162f',
+            {
+                'user_id': str(profile_id),
+                'include_chaining': False,
+                'include_reel': True,
+                'include_suggested_users': False,
+                'include_logged_out_extras': False,
+                'include_highlight_reels': False,
+            },
+            rhx_gis=context.root_rhx_gis,
+        )['data']['user']:
             profile = cls(context, data['reel']['owner'])
         else:
             raise ProfileNotExistsException("No profile found, the user may have blocked you (ID: " +
@@ -767,21 +774,28 @@ class Profile:
                 metadata = self._context.get_iphone_json(f'api/v1/users/web_profile_info/?username={self.username}',
                                                          params={})
                 if metadata['data']['user'] is None:
-                    raise ProfileNotExistsException('Profile {} does not exist.'.format(self.username))
+                    raise ProfileNotExistsException(f'Profile {self.username} does not exist.')
                 self._node = metadata['data']['user']
                 self._has_full_metadata = True
         except (QueryReturnedNotFoundException, KeyError) as err:
             top_search_results = TopSearchResults(self._context, self.username)
-            similar_profiles = [profile.username for profile in top_search_results.get_profiles()]
-            if similar_profiles:
+            if similar_profiles := [
+                profile.username for profile in top_search_results.get_profiles()
+            ]:
                 if self.username in similar_profiles:
                     raise ProfileNotExistsException(
                         f"Profile {self.username} seems to exist, but could not be loaded.") from err
-                raise ProfileNotExistsException('Profile {} does not exist.\nThe most similar profile{}: {}.'
-                                                .format(self.username,
-                                                        's are' if len(similar_profiles) > 1 else ' is',
-                                                        ', '.join(similar_profiles[0:5]))) from err
-            raise ProfileNotExistsException('Profile {} does not exist.'.format(self.username)) from err
+                raise ProfileNotExistsException(
+                    'Profile {} does not exist.\nThe most similar profile{}: {}.'.format(
+                        self.username,
+                        's are' if len(similar_profiles) > 1 else ' is',
+                        ', '.join(similar_profiles[:5]),
+                    )
+                ) from err
+
+            raise ProfileNotExistsException(
+                f'Profile {self.username} does not exist.'
+            ) from err
 
     def _metadata(self, *keys) -> Any:
         try:
@@ -803,7 +817,10 @@ class Profile:
         if not self._context.is_logged_in:
             raise LoginRequiredException("--login required to access iPhone profile info endpoint.")
         if not self._iphone_struct_:
-            data = self._context.get_iphone_json(path='api/v1/users/{}/info/'.format(self.userid), params={})
+            data = self._context.get_iphone_json(
+                path=f'api/v1/users/{self.userid}/info/', params={}
+            )
+
             self._iphone_struct_ = data['user']
         return self._iphone_struct_
 
@@ -818,12 +835,10 @@ class Profile:
         return self._metadata('username').lower()
 
     def __repr__(self):
-        return '<Profile {} ({})>'.format(self.username, self.userid)
+        return f'<Profile {self.username} ({self.userid})>'
 
     def __eq__(self, o: object) -> bool:
-        if isinstance(o, Profile):
-            return self.userid == o.userid
-        return NotImplemented
+        return self.userid == o.userid if isinstance(o, Profile) else NotImplemented
 
     def __hash__(self) -> int:
         return hash(self.userid)
@@ -901,12 +916,19 @@ class Profile:
         if not self._has_public_story:
             self._obtain_metadata()
             # query rate might be limited:
-            data = self._context.graphql_query('9ca88e465c3f866a76f7adee3871bdd8',
-                                               {'user_id': self.userid, 'include_chaining': False,
-                                                'include_reel': False, 'include_suggested_users': False,
-                                                'include_logged_out_extras': True,
-                                                'include_highlight_reels': False},
-                                               'https://www.instagram.com/{}/'.format(self.username))
+            data = self._context.graphql_query(
+                '9ca88e465c3f866a76f7adee3871bdd8',
+                {
+                    'user_id': self.userid,
+                    'include_chaining': False,
+                    'include_reel': False,
+                    'include_suggested_users': False,
+                    'include_logged_out_extras': True,
+                    'include_highlight_reels': False,
+                },
+                f'https://www.instagram.com/{self.username}/',
+            )
+
             self._has_public_story = data['data']['user']['has_public_story']
         assert self._has_public_story is not None
         return self._has_public_story
@@ -942,13 +964,12 @@ class Profile:
 
         .. versionchanged:: 4.2.1
            Require being logged in for HD version (as required by Instagram)."""
-        if self._context.iphone_support and self._context.is_logged_in:
-            try:
-                return self._iphone_struct['hd_profile_pic_url_info']['url']
-            except (InstaloaderException, KeyError) as err:
-                self._context.error('{} Unable to fetch high quality profile pic.'.format(err))
-                return self._metadata("profile_pic_url_hd")
-        else:
+        if not self._context.iphone_support or not self._context.is_logged_in:
+            return self._metadata("profile_pic_url_hd")
+        try:
+            return self._iphone_struct['hd_profile_pic_url_info']['url']
+        except (InstaloaderException, KeyError) as err:
+            self._context.error(f'{err} Unable to fetch high quality profile pic.')
             return self._metadata("profile_pic_url_hd")
 
     def get_profile_pic_url(self) -> str:
@@ -978,7 +999,10 @@ class Profile:
         :rtype: NodeIterator[Post]"""
 
         if self.username != self._context.username:
-            raise LoginRequiredException("--login={} required to get that profile's saved posts.".format(self.username))
+            raise LoginRequiredException(
+                f"--login={self.username} required to get that profile's saved posts."
+            )
+
 
         return NodeIterator(
             self._context,
@@ -1117,7 +1141,7 @@ class StoryItem:
         return Post.mediaid_to_shortcode(self.mediaid)
 
     def __repr__(self):
-        return '<StoryItem {}>'.format(self.mediaid)
+        return f'<StoryItem {self.mediaid}>'
 
     def __eq__(self, o: object) -> bool:
         if isinstance(o, StoryItem):
@@ -1149,7 +1173,10 @@ class StoryItem:
         if not self._context.is_logged_in:
             raise LoginRequiredException("--login required to access iPhone media info endpoint.")
         if not self._iphone_struct_:
-            data = self._context.get_iphone_json(path='api/v1/media/{}/info/'.format(self.mediaid), params={})
+            data = self._context.get_iphone_json(
+                path=f'api/v1/media/{self.mediaid}/info/', params={}
+            )
+
             self._iphone_struct_ = data['items'][0]
         return self._iphone_struct_
 
@@ -1210,10 +1237,12 @@ class StoryItem:
         if self.typename == "GraphStoryImage" and self._context.iphone_support and self._context.is_logged_in:
             try:
                 orig_url = self._iphone_struct['image_versions2']['candidates'][0]['url']
-                url = re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
-                return url
+                return re.sub(r'([?&])se=\d+&?', r'\1', orig_url).rstrip('&')
             except (InstaloaderException, KeyError, IndexError) as err:
-                self._context.error('{} Unable to fetch high quality image version of {}.'.format(err, self))
+                self._context.error(
+                    f'{err} Unable to fetch high quality image version of {self}.'
+                )
+
         return self._node['display_resources'][-1]['src']
 
     @property
@@ -1229,37 +1258,37 @@ class StoryItem:
     @property
     def video_url(self) -> Optional[str]:
         """URL of the video, or None."""
-        if self.is_video:
-            version_urls = []
+        if not self.is_video:
+            return None
+        version_urls = []
+        try:
+            version_urls.append(self._node['video_resources'][-1]['src'])
+        except (InstaloaderException, KeyError, IndexError) as err:
+            self._context.error(f"Warning: Unable to fetch video from graphql of {self}: {err}")
+        if self._context.iphone_support and self._context.is_logged_in:
             try:
-                version_urls.append(self._node['video_resources'][-1]['src'])
+                version_urls.extend(version['url'] for version in self._iphone_struct['video_versions'])
             except (InstaloaderException, KeyError, IndexError) as err:
-                self._context.error(f"Warning: Unable to fetch video from graphql of {self}: {err}")
-            if self._context.iphone_support and self._context.is_logged_in:
-                try:
-                    version_urls.extend(version['url'] for version in self._iphone_struct['video_versions'])
-                except (InstaloaderException, KeyError, IndexError) as err:
-                    self._context.error(f"Unable to fetch high-quality video version of {self}: {err}")
-            version_urls = list(dict.fromkeys(version_urls))
-            if len(version_urls) == 0:
-                return None
-            if len(version_urls) == 1:
-                return version_urls[0]
-            url_candidates: List[Tuple[int, str]] = []
-            for idx, version_url in enumerate(version_urls):
-                try:
-                    url_candidates.append((
-                        int(self._context.head(version_url, allow_redirects=True).headers.get('Content-Length', 0)),
-                        version_url
-                    ))
-                except (InstaloaderException, KeyError, IndexError) as err:
-                    self._context.error(f"Video URL candidate {idx+1}/{len(version_urls)} for {self}: {err}")
-            if not url_candidates:
-                # All candidates fail: Fallback to default URL and handle errors later at the actual download attempt
-                return version_urls[0]
-            url_candidates.sort()
-            return url_candidates[-1][1]
-        return None
+                self._context.error(f"Unable to fetch high-quality video version of {self}: {err}")
+        version_urls = list(dict.fromkeys(version_urls))
+        if not version_urls:
+            return None
+        if len(version_urls) == 1:
+            return version_urls[0]
+        url_candidates: List[Tuple[int, str]] = []
+        for idx, version_url in enumerate(version_urls):
+            try:
+                url_candidates.append((
+                    int(self._context.head(version_url, allow_redirects=True).headers.get('Content-Length', 0)),
+                    version_url
+                ))
+            except (InstaloaderException, KeyError, IndexError) as err:
+                self._context.error(f"Video URL candidate {idx+1}/{len(version_urls)} for {self}: {err}")
+        if not url_candidates:
+            # All candidates fail: Fallback to default URL and handle errors later at the actual download attempt
+            return version_urls[0]
+        url_candidates.sort()
+        return url_candidates[-1][1]
 
 
 class Story:
@@ -1392,7 +1421,7 @@ class Highlight(Story):
         self._items = None  # type: Optional[List[Dict[str, Any]]]
 
     def __repr__(self):
-        return '<Highlight by {}: {}>'.format(self.owner_username, self.title)
+        return f'<Highlight by {self.owner_username}: {self.title}>'
 
     @property
     def unique_id(self) -> int:
@@ -1506,7 +1535,7 @@ class Hashtag:
         return json_node
 
     def __repr__(self):
-        return "<Hashtag #{}>".format(self.name)
+        return f"<Hashtag #{self.name}>"
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Hashtag):
@@ -1701,8 +1730,7 @@ class TopSearchResults:
         Provides the hashtags from the search result as strings.
         """
         for hashtag in self._node.get('hashtags', []):
-            name = hashtag.get('hashtag', {}).get('name')
-            if name:
+            if name := hashtag.get('hashtag', {}).get('name'):
                 yield name
 
     def get_hashtags(self) -> Iterator[Hashtag]:
@@ -1828,7 +1856,7 @@ def load_structure(context: InstaloaderContext, json_structure: dict) -> JsonExp
         elif node_type == "Hashtag":
             return Hashtag(context, json_structure['node'])
         elif node_type == "FrozenNodeIterator":
-            if not 'first_node' in json_structure['node']:
+            if 'first_node' not in json_structure['node']:
                 json_structure['node']['first_node'] = None
             return FrozenNodeIterator(**json_structure['node'])
     elif 'shortcode' in json_structure:
@@ -1845,11 +1873,7 @@ def load_structure_from_file(context: InstaloaderContext, filename: str) -> Json
     :param filename: Filename, ends in '.json' or '.json.xz'
     """
     compressed = filename.endswith('.xz')
-    if compressed:
-        fp = lzma.open(filename, 'rt')
-    else:
-        # pylint:disable=consider-using-with
-        fp = open(filename, 'rt')
+    fp = lzma.open(filename, 'rt') if compressed else open(filename, 'rt')
     json_structure = json.load(fp)
     fp.close()
     return load_structure(context, json_structure)

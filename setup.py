@@ -12,9 +12,8 @@ SRC = os.path.abspath(os.path.dirname(__file__))
 def get_version():
     with open(os.path.join(SRC, 'instaloader/__init__.py')) as f:
         for line in f:
-            m = re.match("__version__ = '(.*)'", line)
-            if m:
-                return m.group(1)
+            if m := re.match("__version__ = '(.*)'", line):
+                return m[1]
     raise SystemExit("Could not find version string.")
 
 

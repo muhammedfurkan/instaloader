@@ -51,7 +51,7 @@ commands = ["pip install pipenv==2022.1.8",
 for command in commands:
     print()
     print('#' * (len(command) + 6))
-    print('## {} ##'.format(command))
+    print(f'## {command} ##')
     print('#' * (len(command) + 6))
     print(flush=True)
     err = subprocess.Popen(command).wait()
@@ -68,4 +68,6 @@ with open('dist/instaloader.exe.md5', 'w+') as f:
     f.write('{} *instaloader.exe\n'.format(hash_md5.hexdigest()))
 
 # Create ZIP file
-shutil.make_archive('instaloader-{}-windows-standalone'.format(os.getenv('VERSION_TAG')), 'zip', 'dist')
+shutil.make_archive(
+    f"instaloader-{os.getenv('VERSION_TAG')}-windows-standalone", 'zip', 'dist'
+)

@@ -276,9 +276,9 @@ def resumable_iteration(context: InstaloaderContext,
             iterator.thaw(fni)
             is_resuming = True
             start_index = iterator.total_index
-            context.log("Resuming from {}.".format(resume_file_path))
+            context.log(f"Resuming from {resume_file_path}.")
         except (InvalidArgumentException, LZMAError, json.decoder.JSONDecodeError) as exc:
-            context.error("Warning: Not resuming from {}: {}".format(resume_file_path, exc))
+            context.error(f"Warning: Not resuming from {resume_file_path}: {exc}")
     try:
         yield is_resuming, start_index
     except (KeyboardInterrupt, AbortDownloadException):
@@ -289,4 +289,6 @@ def resumable_iteration(context: InstaloaderContext,
         raise
     if resume_file_exists:
         os.unlink(resume_file_path)
-        context.log("Iteration complete, deleted resume information file {}.".format(resume_file_path))
+        context.log(
+            f"Iteration complete, deleted resume information file {resume_file_path}."
+        )
