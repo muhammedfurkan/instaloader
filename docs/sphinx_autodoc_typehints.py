@@ -59,7 +59,7 @@ def format_annotation(annotation):
         if annotation.__qualname__ == 'NoneType':
             return '``None``'
         else:
-            return ':py:class:`{}`'.format(annotation.__qualname__)
+            return f':py:class:`{annotation.__qualname__}`'
 
     annotation_cls = annotation if inspect.isclass(annotation) else type(annotation)
     class_name = None
@@ -114,10 +114,10 @@ def format_annotation(annotation):
                 params = [Ellipsis, result_annotation]
             elif arg_annotations is not None:
                 params = [
-                    '\\[{}]'.format(
-                        ', '.join(format_annotation(param) for param in arg_annotations)),
-                    result_annotation
+                    f"\\[{', '.join((format_annotation(param) for param in arg_annotations))}]",
+                    result_annotation,
                 ]
+
         elif hasattr(annotation, 'type_var'):
             # Type alias
             class_name = annotation.name
@@ -128,12 +128,12 @@ def format_annotation(annotation):
             params = annotation.__parameters__
 
         if params:
-            extra = '\\[{}]'.format(', '.join(format_annotation(param) for param in params))
+            extra = f"\\[{', '.join((format_annotation(param) for param in params))}]"
 
         if not class_name:
             class_name = annotation_cls.__qualname__.title()
 
-        return '{}`~{}.{}`{}'.format(prefix, module, class_name, extra)
+        return f'{prefix}`~{module}.{class_name}`{extra}'
     elif annotation is Ellipsis:
         return '...'
     elif inspect.isclass(annotation) or inspect.isclass(getattr(annotation, '__origin__', None)):
@@ -144,11 +144,10 @@ def format_annotation(annotation):
         if Generic in annotation_cls.mro():
             params = (getattr(annotation, '__parameters__', None) or
                       getattr(annotation, '__args__', None))
-            extra = '\\[{}]'.format(', '.join(format_annotation(param) for param in params))
+            extra = f"\\[{', '.join((format_annotation(param) for param in params))}]"
 
         module = annotation.__module__.split('.')[0]    # hack to 'fix' class linking for Instaloader project
-        return ':py:class:`~{}.{}`{}'.format(module, annotation_cls.__qualname__,
-                                             extra)
+        return f':py:class:`~{module}.{annotation_cls.__qualname__}`{extra}'
 
     return str(annotation)
 
@@ -157,7 +156,7 @@ def process_signature(app, what: str, name: str, obj, options, signature, return
     if not callable(obj):
         return
 
-    if what in ('class', 'exception'):
+    if what in {'class', 'exception'}:
         obj = getattr(obj, '__init__', getattr(obj, '__new__', None))
 
     if not getattr(obj, '__annotations__', None):
@@ -171,7 +170,7 @@ def process_signature(app, what: str, name: str, obj, options, signature, return
     ]
 
     if parameters:
-        if what in ('class', 'exception'):
+        if what in {'class', 'exception'}:
             del parameters[0]
         elif what == 'method':
             outer = inspect.getmodule(obj)
@@ -218,7 +217,7 @@ def process_docstring(app, what, name, obj, options, lines):
 
         for argname, annotation in type_hints.items():
             if argname.endswith('_'):
-                argname = '{}\\_'.format(argname[:-1])
+                argname = f'{argname[:-1]}\\_'
 
             formatted_annotation = format_annotation(annotation)
 
@@ -242,10 +241,10 @@ def process_docstring(app, what, name, obj, options, lines):
                         lines.append('')
                         insert_index += 1
 
-                    lines.insert(insert_index, ':rtype: {}'.format(formatted_annotation))
+                    lines.insert(insert_index, f':rtype: {formatted_annotation}')
             else:
-                searchfor = ':param {}:'.format(argname)
+                searchfor = f':param {argname}:'
                 for i, line in enumerate(lines):
                     if line.startswith(searchfor):
-                        lines.insert(i, ':type {}: {}'.format(argname, formatted_annotation))
+                        lines.insert(i, f':type {argname}: {formatted_annotation}')
                         break

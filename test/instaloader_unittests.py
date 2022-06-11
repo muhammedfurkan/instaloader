@@ -30,7 +30,7 @@ class TestInstaloaderAnonymously(unittest.TestCase):
 
     def setUp(self):
         self.dir = tempfile.mkdtemp()
-        print("Testing in {}".format(self.dir))
+        print(f"Testing in {self.dir}")
         os.chdir(self.dir)
         self.L = instaloader.Instaloader(download_geotags=True,
                                          download_comments=True,
@@ -47,7 +47,7 @@ class TestInstaloaderAnonymously(unittest.TestCase):
         ratecontroller = self.L.context._rate_controller
         self.L.close()
         os.chdir('/')
-        print("Removing {}".format(self.dir))
+        print(f"Removing {self.dir}")
         shutil.rmtree(self.dir)
 
     def post_paging_test(self, iterator):
@@ -132,15 +132,16 @@ class TestInstaloaderLoggedIn(TestInstaloaderAnonymously):
 
     def test_stories_paging(self):
         for user_story in self.L.get_stories():
-            print("profile {}.".format(user_story.owner_username))
+            print(f"profile {user_story.owner_username}.")
             for item in user_story.get_items():
                 print(item)
 
     def test_highlights_paging(self):
         for user_highlight in self.L.get_highlights(PROFILE_WITH_HIGHLIGHTS):
-            print("Retrieving {} highlights \"{}\" from profile {}".format(user_highlight.itemcount,
-                                                                           user_highlight.title,
-                                                                           user_highlight.owner_username))
+            print(
+                f'Retrieving {user_highlight.itemcount} highlights "{user_highlight.title}" from profile {user_highlight.owner_username}'
+            )
+
             for item in user_highlight.get_items():
                 print(item)
 
